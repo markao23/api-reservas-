@@ -1,0 +1,92 @@
+services:
+    api-gateway: # Corrigi o seu typo "api-gateway"
+      build: ./api-gateway
+      container_name: api_gateway
+      ports:
+        - "3000:3000" # Porta principal do seu projeto
+      environment:
+        - RECURSOS_API_URL=http://servico-recursos:3000
+        - RESERVAS_API_URL=http://servico-reservas:3000
+      depends_on:
+        servico-recursos:
+          condition: service_healthy
+        servico-reservas:
+          condition: service_healthy
+      volumes:
+        - ./api-gateway:/usr/src/app # Mapeia o código para live-reload
+
+    servico-recursos:
+      build: ./servico-recursos
+      container_name: servico_recursos
+      ports:
+        - "3001:3000"
+      environment:
+        - DATABASE_URL=postgresql://postgres:docker@db-recursos:5432/recursos_db
+      volumes:
+        - ./servico-recursos:/usr/src/app
+      depends_on:
+        db-recursos:
+          condition: service_healthy
+      healthcheck:
+        test: [ "CMD-SHELL", "curl -f http://localhost:3000/health || exit 1" ] # (Você precisa ter uma rota /health no serviço)
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+    db-recursos: # Banco de dados SÓ para recursos
+      image: postgres:14-alpine
+      container_name: db_recursos
+      environment:
+        - POSTGRES_USER=postgres
+        - POSTGRES_PASSWORD=docker
+        - POSTGRES_DB=recursos_db # Banco específico
+      ports:
+        - "5435:5432" # Porta 5435 no seu PC (para debug)
+      volumes:
+        - recursos_data:/var/lib/postgresql/data
+      healthcheck:
+        test: [ "CMD-SHELL", "pg_isready -U postgres -d recursos_db" ]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+
+    # --- SERVIÇO DE RESERVAS (API + DB) ---
+    servico-reservas:
+      build: ./servico-reservas
+      container_name: servico_reservas
+      ports:
+        - "3002:3000"
+      environment:
+        - DATABASE_URL=postgresql://postgres:docker@db-reservas:5432/db_reservas
+      volumes:
+        - ./servico-reservas:/usr/src/app
+      depends_on:
+        db-reservas:
+          condition: service_healthy
+      healthcheck:
+        test: [ "CMD-SHELL", "curl -f http://localhost:3000/health || exit 1" ] # (Você precisa ter uma rota /health no serviço)
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+    db-reservas:
+      image: postgres:14-alpine
+      container_name: db_reservas # O nome do container PODE ser diferente
+      environment:
+        - POSTGRES_USER=postgres
+        - POSTGRES_PASSWORD=docker
+        - POSTGRES_DB=db_reservas
+      ports:
+        - "5436:5432"
+      volumes:
+        - reservas_data:/var/lib/postgresql/data
+      healthcheck:
+        test: [ "CMD-SHELL", "pg_isready -U postgres -d db_reservas" ] # <-- CORRIGIDO AQUI
+        interval: 5s
+        timeout: 5s
+        retries: 5
+
+  # Volumes separados para cada banco de dados
+volumes:
+  recursos_data:
+  reservas_data:
